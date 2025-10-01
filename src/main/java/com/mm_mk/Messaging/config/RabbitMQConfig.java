@@ -15,6 +15,17 @@ public class RabbitMQConfig {
     private String roomsExchange;
 
     // Declare ALL queues
+
+    @Bean
+    public FanoutExchange userExchange() {
+        return new FanoutExchange("user.exchange");
+    }
+
+    @Bean
+    public Queue messagingUserQueue() {
+        return QueueBuilder.durable("messaging.user.queue").build();
+    }
+
     @Bean
     public Queue roomCreatedQueue() {
         return QueueBuilder.durable("messaging.room.created.queue").build();
@@ -42,6 +53,11 @@ public class RabbitMQConfig {
     }
 
     // Bind queues to exchange
+
+    @Bean
+    public Binding bindMessagingUserQueue(Queue messagingUserQueue, FanoutExchange userExchange) {
+        return BindingBuilder.bind(messagingUserQueue).to(userExchange);
+    }
     @Bean
     public Binding bindRoomCreated() {
         return BindingBuilder.bind(roomCreatedQueue())
