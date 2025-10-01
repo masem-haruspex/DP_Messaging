@@ -1,7 +1,10 @@
-// src/main/java/com/mm_mk/Messaging/service/MessagingService.java
 package com.mm_mk.Messaging.service;
 
+import com.mm_mk.Messaging.model.LocalRoom;
+import com.mm_mk.Messaging.model.LocalUser;
 import com.mm_mk.Messaging.model.Message;
+import com.mm_mk.Messaging.repository.LocalRoomRepository;
+import com.mm_mk.Messaging.repository.LocalUserRepository;
 import com.mm_mk.Messaging.repository.MessageRepository;
 import com.mm_mk.Messaging.response.MessageResponse;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -19,8 +22,9 @@ import java.util.stream.Collectors;
 public class MessagingService {
 
     private final MessageRepository messageRepository;
+    private final LocalRoomRepository localRoomRepository;
+    private final LocalUserRepository localUserRepository;
     private final RabbitTemplate rabbitTemplate;
-    private final RoomServiceClient roomServiceClient;
 
     @Value("${rabbitmq.exchange.rooms}")
     private String roomsExchange;
@@ -29,62 +33,89 @@ public class MessagingService {
     private String messageSentRoutingKey;
 
     public MessagingService(MessageRepository messageRepository,
-                            RabbitTemplate rabbitTemplate,
-                            RoomServiceClient roomServiceClient) {
+                            LocalRoomRepository localRoomRepository,
+                            LocalUserRepository localUserRepository,
+                            RabbitTemplate rabbitTemplate) {
         this.messageRepository = messageRepository;
+        this.localRoomRepository = localRoomRepository;
+        this.localUserRepository = localUserRepository;
         this.rabbitTemplate = rabbitTemplate;
-        this.roomServiceClient = roomServiceClient;
     }
 
+    /**
+     * Send a message to a room (roomCode must exist in local_rooms; sender must exist in local_users)
+     */
     @Transactional
     public MessageResponse sendMessage(String roomCode, UUID userId, String content) {
-        UUID roomId = roomServiceClient.getRoomByCode(roomCode).getId();
+        // find the local room by its code
+        LocalRoom room = localRoomRepository.findByCode(roomCode)
+                .orElseThrow(() -> new RuntimeException("Room not found in local_rooms: " + roomCode));
+
+        // find the user locally
+        LocalUser user = localUserRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found in local_users: " + userId));
 
         Message message = Message.builder()
                 .id(UUID.randomUUID())
-                .roomId(roomId)
-                .userId(userId)
+                .room(room)      // use the relation
+                .sender(user)    // use the relation
                 .content(content)
                 .sentAt(LocalDateTime.now())
                 .build();
 
         message = messageRepository.save(message);
 
+        // publish event containing message metadata
         rabbitTemplate.convertAndSend(
                 roomsExchange,
                 messageSentRoutingKey,
                 Map.of(
                         "messageId", message.getId().toString(),
-                        "roomId", roomId.toString(),
-                        "userId", userId.toString(),
-                        "sentAt", message.getSentAt()
+                        "roomId", room.getId().toString(),
+                        "userId", user.getId().toString(),
+                        "content", message.getContent(),
+                        "sentAt", message.getSentAt().toString()
                 )
         );
 
+        // MessageResponse is a record — construct it with the canonical constructor
         return new MessageResponse(
                 message.getId(),
-                message.getRoomId(),
-                message.getUserId(),
+                message.getRoom().getId(),
+                message.getSender().getId(),
                 message.getContent(),
                 message.getSentAt()
         );
     }
 
+    /**
+     * Get messages for a room (by room code)
+     */
+    @Transactional(readOnly = true)
     public List<MessageResponse> getMessages(String roomCode) {
-        UUID roomId = roomServiceClient.getRoomByCode(roomCode).getId();
-        return messageRepository.findByRoomIdOrderBySentAtAsc(roomId)
+        LocalRoom room = localRoomRepository.findByCode(roomCode)
+                .orElseThrow(() -> new RuntimeException("Room not found in local_rooms: " + roomCode));
+
+        return messageRepository.findByRoomOrderBySentAtAsc(room)
                 .stream()
                 .map(m -> new MessageResponse(
                         m.getId(),
-                        m.getRoomId(),
-                        m.getUserId(),
+                        m.getRoom().getId(),
+                        m.getSender().getId(),
                         m.getContent(),
                         m.getSentAt()
                 ))
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Cleanup messages for a deleted room (called by your RoomEventListener)
+     */
+    @Transactional
     public void cleanupRoomMessages(UUID roomId) {
-        messageRepository.deleteByRoomId(roomId);
+        // ensure local room exists (if it doesn't, nothing to delete)
+        localRoomRepository.findById(roomId).ifPresent(room -> {
+            messageRepository.deleteByRoom(room);
+        });
     }
 }

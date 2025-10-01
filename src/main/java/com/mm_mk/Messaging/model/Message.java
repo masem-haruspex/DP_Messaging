@@ -18,11 +18,13 @@ public class Message {
     @Id
     private UUID id;
 
-    @Column(name = "room_id", nullable = false)
-    private UUID roomId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "room_id", nullable = false)
+    private LocalRoom room;
 
-    @Column(name = "sender_id", nullable = false)
-    private UUID userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sender_id", nullable = false)
+    private LocalUser sender;
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
