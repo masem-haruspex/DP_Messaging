@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/Messaging/controller/MessageController.java
 package com.mm_mk.Messaging.controller;
 
 import com.mm_mk.Messaging.request.SendMessageRequest;

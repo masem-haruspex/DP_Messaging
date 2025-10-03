@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/Messaging/response/MessageResponse.java
 package com.mm_mk.Messaging.response;
 
 import java.util.UUID;

@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/Messaging/event/UserJoinedEvent.java
 package com.mm_mk.Messaging.event;
 
 import java.util.UUID;

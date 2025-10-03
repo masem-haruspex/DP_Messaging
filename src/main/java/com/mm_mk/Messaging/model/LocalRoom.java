@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/messaging/model/LocalRoom.java
 package com.mm_mk.Messaging.model;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;

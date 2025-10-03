@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/Messaging/exception/GlobalExceptionHandler.java
 package com.mm_mk.Messaging.exception;
 
 import org.springframework.http.HttpStatus;

@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/Messaging/request/SendMessageRequest.java
 package com.mm_mk.Messaging.request;
 
 import jakarta.validation.constraints.NotBlank;

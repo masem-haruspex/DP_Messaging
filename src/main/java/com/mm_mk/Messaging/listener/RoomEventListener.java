@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/Messaging/listener/RoomEventListener.java
 package com.mm_mk.Messaging.listener;
 
 import com.mm_mk.Messaging.model.LocalRoom;

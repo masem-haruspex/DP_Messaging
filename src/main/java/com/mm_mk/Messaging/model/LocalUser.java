@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/messaging/model/LocalUser.java
 package com.mm_mk.Messaging.model;
 
 import jakarta.persistence.*;

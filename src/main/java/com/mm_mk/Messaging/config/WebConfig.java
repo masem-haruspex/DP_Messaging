@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/Messaging/config/WebConfig.java
 package com.mm_mk.Messaging.config;
 
 import org.springframework.context.annotation.Configuration;

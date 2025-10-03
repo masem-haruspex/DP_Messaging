@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/Messaging/repository/MessageRepository.java
 package com.mm_mk.Messaging.repository;
 
 import com.mm_mk.Messaging.model.LocalRoom;
