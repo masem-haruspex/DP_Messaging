@@ -42,30 +42,24 @@ public class MessagingService {
         this.rabbitTemplate = rabbitTemplate;
     }
 
-    /**
-     * Send a message to a room (roomCode must exist in local_rooms; sender must exist in local_users)
-     */
     @Transactional
     public MessageResponse sendMessage(String roomCode, UUID userId, String content) {
-        // find the local room by its code
         LocalRoom room = localRoomRepository.findByCode(roomCode)
                 .orElseThrow(() -> new RuntimeException("Room not found in local_rooms: " + roomCode));
 
-        // find the user locally
         LocalUser user = localUserRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found in local_users: " + userId));
 
         Message message = Message.builder()
                 .id(UUID.randomUUID())
-                .room(room)      // use the relation
-                .sender(user)    // use the relation
+                .room(room)
+                .sender(user)
                 .content(content)
                 .sentAt(LocalDateTime.now())
                 .build();
 
         message = messageRepository.save(message);
 
-        // publish event containing message metadata
         rabbitTemplate.convertAndSend(
                 roomsExchange,
                 messageSentRoutingKey,
@@ -78,7 +72,6 @@ public class MessagingService {
                 )
         );
 
-        // MessageResponse is a record — construct it with the canonical constructor
         return new MessageResponse(
                 message.getId(),
                 message.getRoom().getId(),
@@ -88,9 +81,6 @@ public class MessagingService {
         );
     }
 
-    /**
-     * Get messages for a room (by room code)
-     */
     @Transactional(readOnly = true)
     public List<MessageResponse> getMessages(String roomCode) {
         LocalRoom room = localRoomRepository.findByCode(roomCode)
@@ -108,12 +98,8 @@ public class MessagingService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Cleanup messages for a deleted room (called by your RoomEventListener)
-     */
     @Transactional
     public void cleanupRoomMessages(UUID roomId) {
-        // ensure local room exists (if it doesn't, nothing to delete)
         localRoomRepository.findById(roomId).ifPresent(room -> {
             messageRepository.deleteByRoom(room);
         });
