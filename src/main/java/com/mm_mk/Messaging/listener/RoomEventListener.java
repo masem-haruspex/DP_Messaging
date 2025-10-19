@@ -6,6 +6,7 @@ import com.mm_mk.Messaging.service.MessagingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -19,12 +20,15 @@ public class RoomEventListener {
 
     private final MessagingService messagingService;
     private final LocalRoomRepository localRoomRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public RoomEventListener(MessagingService messagingService,
-                             LocalRoomRepository localRoomRepository) {
+                             LocalRoomRepository localRoomRepository,
+                             SimpMessagingTemplate messagingTemplate) {
         logger.info("RoomEventListener bean created!");
         this.messagingService = messagingService;
         this.localRoomRepository = localRoomRepository;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @RabbitListener(queues = "messaging.room.created.queue")
@@ -35,7 +39,6 @@ public class RoomEventListener {
 
         logger.info("Initialized chat for room: {} (roomId:{})", code, roomId);
 
-        // Insert into local_rooms if not already present
         localRoomRepository.findById(roomId).ifPresentOrElse(
                 r -> logger.debug("Room {} already exists locally", roomId),
                 () -> {
@@ -56,31 +59,123 @@ public class RoomEventListener {
         UUID roomId = UUID.fromString((String) event.get("roomId"));
         logger.info("Cleaning up messages for deleted room: {}", roomId);
 
-        // Delete related messages
         messagingService.cleanupRoomMessages(roomId);
 
-        // Delete local copy of room
         localRoomRepository.findById(roomId).ifPresent(room -> {
             localRoomRepository.delete(room);
             logger.info("Removed local room entry for {}", roomId);
         });
+
+        messagingTemplate.convertAndSend(
+                "/topic/rooms/" + roomId + "/system",
+                Map.of(
+                        "type", "ROOM_DELETED",
+                        "roomId", roomId.toString(),
+                        "timestamp", System.currentTimeMillis()
+                )
+        );
     }
 
     @RabbitListener(queues = "messaging.user.joined.queue")
     public void handleUserJoined(Map<String, Object> event) {
         UUID roomId = UUID.fromString((String) event.get("roomId"));
         UUID userId = UUID.fromString((String) event.get("userId"));
-        logger.info("User {} joined room {}", userId, roomId);
 
-        // optional: could log to analytics or store participants later
+        localRoomRepository.findById(roomId).ifPresent(room -> {
+            String roomCode = room.getCode();
+
+            logger.info("User {} joined room {}", userId, roomCode);
+
+            messagingTemplate.convertAndSend(
+                    "/topic/rooms/" + roomCode + "/participants",
+                    Map.of(
+                            "type", "USER_JOINED",
+                            "userId", userId.toString(),
+                            "roomCode", roomCode,
+                            "timestamp", System.currentTimeMillis()
+                    )
+            );
+        });
     }
 
     @RabbitListener(queues = "messaging.user.left.queue")
     public void handleUserLeft(Map<String, Object> event) {
         UUID roomId = UUID.fromString((String) event.get("roomId"));
         UUID userId = UUID.fromString((String) event.get("userId"));
-        logger.info("User {} left room {}", userId, roomId);
 
-        // optional: same here, no persistence needed unless you track participants
+        localRoomRepository.findById(roomId).ifPresent(room -> {
+            String roomCode = room.getCode();
+
+            logger.info("User {} left room {}", userId, roomCode);
+
+            messagingTemplate.convertAndSend(
+                    "/topic/rooms/" + roomCode + "/participants",
+                    Map.of(
+                            "type", "USER_LEFT",
+                            "userId", userId.toString(),
+                            "roomCode", roomCode,
+                            "timestamp", System.currentTimeMillis()
+                    )
+            );
+        });
+    }
+
+    @RabbitListener(queues = "messaging.user.kicked.queue")
+    public void handleUserKicked(Map<String, Object> event) {
+        UUID roomId = UUID.fromString((String) event.get("roomId"));
+        UUID userId = UUID.fromString((String) event.get("userId"));
+        UUID kickedBy = UUID.fromString((String) event.get("kickedBy"));
+
+        localRoomRepository.findById(roomId).ifPresent(room -> {
+            String roomCode = room.getCode();
+
+            logger.info("User {} kicked from room {} by {}", userId, roomCode, kickedBy);
+
+            messagingTemplate.convertAndSend(
+                    "/topic/rooms/" + roomCode + "/participants",
+                    Map.of(
+                            "type", "USER_KICKED",
+                            "userId", userId.toString(),
+                            "kickedBy", kickedBy.toString(),
+                            "roomCode", roomCode,
+                            "timestamp", System.currentTimeMillis()
+                    )
+            );
+
+            messagingTemplate.convertAndSendToUser(
+                    userId.toString(),
+                    "/queue/notifications",
+                    Map.of(
+                            "type", "YOU_WERE_KICKED",
+                            "roomCode", roomCode,
+                            "kickedBy", kickedBy.toString(),
+                            "timestamp", System.currentTimeMillis()
+                    )
+            );
+        });
+    }
+
+    @RabbitListener(queues = "messaging.user.muted.queue")
+    public void handleUserMuted(Map<String, Object> event) {
+        UUID roomId = UUID.fromString((String) event.get("roomId"));
+        UUID userId = UUID.fromString((String) event.get("userId"));
+        UUID mutedBy = UUID.fromString((String) event.get("mutedBy"));
+
+        localRoomRepository.findById(roomId).ifPresent(room -> {
+            String roomCode = room.getCode();
+
+            logger.info("User {} muted in room {} by {}", userId, roomCode, mutedBy);
+
+            messagingTemplate.convertAndSend(
+                    "/topic/rooms/" + roomCode + "/participants",
+                    Map.of(
+                            "type", "USER_MUTED",
+                            "userId", userId.toString(),
+                            "mutedBy", mutedBy.toString(),
+                            "roomCode", roomCode,
+                            "timestamp", System.currentTimeMillis()
+                    )
+            );
+        });
     }
 }

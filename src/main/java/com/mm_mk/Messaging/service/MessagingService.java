@@ -29,9 +29,6 @@ public class MessagingService {
     @Value("${rabbitmq.exchange.rooms}")
     private String roomsExchange;
 
-    @Value("${rabbitmq.routingkey.message.sent}")
-    private String messageSentRoutingKey;
-
     public MessagingService(MessageRepository messageRepository,
                             LocalRoomRepository localRoomRepository,
                             LocalUserRepository localUserRepository,
@@ -62,11 +59,13 @@ public class MessagingService {
 
         rabbitTemplate.convertAndSend(
                 roomsExchange,
-                messageSentRoutingKey,
+                "message.sent",
                 Map.of(
                         "messageId", message.getId().toString(),
                         "roomId", room.getId().toString(),
+                        "roomCode", roomCode,
                         "userId", user.getId().toString(),
+                        "username", user.getUsername(),
                         "content", message.getContent(),
                         "sentAt", message.getSentAt().toString()
                 )
@@ -76,6 +75,7 @@ public class MessagingService {
                 message.getId(),
                 message.getRoom().getId(),
                 message.getSender().getId(),
+                user.getUsername(),
                 message.getContent(),
                 message.getSentAt()
         );
@@ -88,13 +88,16 @@ public class MessagingService {
 
         return messageRepository.findByRoomOrderBySentAtAsc(room)
                 .stream()
-                .map(m -> new MessageResponse(
-                        m.getId(),
-                        m.getRoom().getId(),
-                        m.getSender().getId(),
-                        m.getContent(),
-                        m.getSentAt()
-                ))
+                .map(message -> {
+                    return new MessageResponse(
+                            message.getId(),
+                            message.getRoom().getId(),
+                            message.getSender().getId(),
+                            message.getSender().getUsername(),
+                            message.getContent(),
+                            message.getSentAt()
+                    );
+                })
                 .collect(Collectors.toList());
     }
 

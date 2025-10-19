@@ -6,6 +6,7 @@ public record MessageResponse(
     UUID id,
     UUID roomId,
     UUID userId,
+    String username,
     String content,
     java.time.LocalDateTime sentAt
 ) {}
