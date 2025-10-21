@@ -65,6 +65,8 @@ public class WebSocketController {
                                Map<String, Object> keyEvent,
                                @Header("X-User-ID") UUID userId) {
 
+       logger.info("Received key event for room {} from user {}: {}", roomCode, userId, keyEvent);
+
         messagingTemplate.convertAndSend(
                 "/topic/rooms/" + roomCode + "/keyEvents",
                 Map.of(
@@ -74,6 +76,9 @@ public class WebSocketController {
                         "timestamp", System.currentTimeMillis()
                 )
         );
+
+    logger.info("Broadcasted key event to /topic/rooms/{}/keyEvents", roomCode);
+
     }
 
     @MessageMapping("/rooms/{roomCode}/join")
