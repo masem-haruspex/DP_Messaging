@@ -23,11 +23,6 @@ public class LocalRoom {
     @Pattern(regexp = "^[A-Z0-9]{12}$", message = "Code must be 12 uppercase alphanumeric characters")
     private String code;
 
-    @Column(name = "name", nullable = false, length = 100)
-    @NotBlank(message = "Name is required")
-    @Size(max = 100, message = "Name must be under 100 characters")
-    private String name;
-
     @Column(name = "last_synced_at", nullable = false)
     @Builder.Default
     private LocalDateTime lastSyncedAt = LocalDateTime.now();
