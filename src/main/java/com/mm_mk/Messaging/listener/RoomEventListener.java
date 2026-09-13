@@ -142,7 +142,6 @@ public class RoomEventListener {
             localRoomRepository.findById(roomId).ifPresent(room -> {
                 String roomCode = room.getCode();
 
-                /* look up the user; fall back to guest-xxx if not found */
                 String username = localUserRepository.findById(userId)
                         .map(LocalUser::getUsername)
                         .orElse("guest-" + userId.toString().substring(0, 8));
@@ -154,7 +153,7 @@ public class RoomEventListener {
                         Map.of(
                                 "type",      "USER_LEFT",
                                 "userId",    userId.toString(),
-                                "username",  username,          // <-- real name or guest-xxx
+                                "username",  username,          
                                 "roomCode",  roomCode,
                                 "timestamp", System.currentTimeMillis()
                         )

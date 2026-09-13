@@ -3,6 +3,9 @@ target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+/logs/
+.plan
+send_to_cloud.sh
 
 ### STS ###
 .apt_generated

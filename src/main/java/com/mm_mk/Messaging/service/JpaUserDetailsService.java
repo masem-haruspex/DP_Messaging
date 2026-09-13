@@ -18,54 +18,49 @@ import java.util.UUID;
 
 @Component
 public class JpaUserDetailsService implements UserDetailsService {
-    private static final Logger logger = LoggerFactory.getLogger(JpaUserDetailsService.class);
+	private static final Logger logger = LoggerFactory.getLogger(JpaUserDetailsService.class);
+	private final LocalUserRepository localUserRepository;
+	private final AdminUserRepository adminUserRepository;
 
-    private final LocalUserRepository localUserRepository;
-    private final AdminUserRepository adminUserRepository;
+	public JpaUserDetailsService(LocalUserRepository localUserRepository, AdminUserRepository adminUserRepository) {
+		this.localUserRepository = localUserRepository;
+		this.adminUserRepository = adminUserRepository;
+	}
 
-    public JpaUserDetailsService(LocalUserRepository localUserRepository, AdminUserRepository adminUserRepository) {
-        this.localUserRepository = localUserRepository;
-        this.adminUserRepository = adminUserRepository;
-    }
+	@Override
+	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+		logger.debug("Loading user by username: {}", username);
 
-    @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        logger.debug("Loading user by username: {}", username);
+		if ("admin".equals(username)) {
+			UUID adminUserId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+			LocalUser localUser = localUserRepository.findById(adminUserId)
+				.orElseThrow(() -> {
+					logger.error("Admin user not found in local_users with ID: {}", adminUserId);
+					return new UsernameNotFoundException("Admin user not found");
+				});
+			logger.debug("Admin user found: {}", localUser.getUsername());
 
-        // For Basic Auth, we need to find the user by username
-        // Since you have admin user with ID 11111111-1111-1111-1111-111111111111
-        // Let's assume the username is "admin" for this user
+			List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+			authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+			boolean isAdmin = adminUserRepository.isUserAdmin(localUser.getId());
+			if (isAdmin) {
+				authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+				logger.debug("User {} granted ROLE_ADMIN", localUser.getUsername());
+			}
 
-        if ("admin".equals(username)) {
-            UUID adminUserId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+			String adminPassword = System.getenv("ACTUATOR_ADMIN_PASSWORD");
+			if (adminPassword == null || adminPassword.isBlank()) {
+				throw new IllegalStateException("ACTUATOR_ADMIN_PASSWORD environment variable must be set");
+			}
 
-            LocalUser localUser = localUserRepository.findById(adminUserId)
-                    .orElseThrow(() -> {
-                        logger.error("Admin user not found in local_users with ID: {}", adminUserId);
-                        return new UsernameNotFoundException("Admin user not found");
-                    });
+			return new User(
+					localUser.getUsername(),
+					"{noop}" + adminPassword,
+					authorities
+					);
+		}
 
-            logger.debug("Admin user found: {}", localUser.getUsername());
-
-            List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-            authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
-
-            boolean isAdmin = adminUserRepository.isUserAdmin(localUser.getId());
-            if (isAdmin) {
-                authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
-                logger.debug("User {} granted ROLE_ADMIN", localUser.getUsername());
-            }
-
-            // For Basic Auth, we need to provide a password
-            // Since you're using UUID-based auth, we can use a fixed password or the UUID
-            return new User(
-                    localUser.getUsername(),
-                    "{noop}admin123", // Using {noop} for no password encoding
-                    authorities
-            );
-        }
-
-        logger.warn("User not found: {}", username);
-        throw new UsernameNotFoundException("User not found: " + username);
-    }
+		logger.warn("User not found: {}", username);
+		throw new UsernameNotFoundException("User not found: " + username);
+	}
 }

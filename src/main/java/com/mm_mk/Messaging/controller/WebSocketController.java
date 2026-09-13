@@ -26,129 +26,150 @@ import java.util.UUID;
 @Tag(name = "WebSocket", description = "Real-time WebSocket endpoints for live messaging")
 public class WebSocketController {
 
-    private static final Logger logger = LoggerFactory.getLogger(WebSocketController.class);
-    private static final long SLOW_OPERATION_THRESHOLD_MS = 1000; // 1 second for WebSocket operations
+	private static final Logger logger = LoggerFactory.getLogger(WebSocketController.class);
+	private static final long SLOW_OPERATION_THRESHOLD_MS = 1000;
 
-    private final MessagingService messagingService;
-    private final SimpMessagingTemplate messagingTemplate;
-    private final LocalRoomRepository localRoomRepository;
-    private final RabbitTemplate rabbitTemplate;
+	private final MessagingService messagingService;
+	private final SimpMessagingTemplate messagingTemplate;
+	private final LocalRoomRepository localRoomRepository;
+	private final RabbitTemplate rabbitTemplate;
 
-    @Value("${rabbitmq.exchange.rooms}")
-    private String roomsExchange;
+	@Value("${rabbitmq.exchange.rooms}")
+	private String roomsExchange;
 
-    @Value("${rabbitmq.routingkey.user.left}")
-    private String userLeftRoutingKey;
+	@Value("${rabbitmq.routingkey.user.left}")
+	private String userLeftRoutingKey;
 
-    public WebSocketController(MessagingService messagingService,
-                               SimpMessagingTemplate messagingTemplate, LocalRoomRepository localRoomRepository, RabbitTemplate rabbitTemplate) {
-        this.messagingService = messagingService;
-        this.messagingTemplate = messagingTemplate;
-        this.localRoomRepository = localRoomRepository;
-        this.rabbitTemplate = rabbitTemplate;
-    }
+	public WebSocketController(MessagingService messagingService,
+			SimpMessagingTemplate messagingTemplate, LocalRoomRepository localRoomRepository, RabbitTemplate rabbitTemplate) {
+		this.messagingService = messagingService;
+		this.messagingTemplate = messagingTemplate;
+		this.localRoomRepository = localRoomRepository;
+		this.rabbitTemplate = rabbitTemplate;
+	}
 
-    @MessageMapping("/rooms/{roomCode}/sendMessage")
-    @Operation(summary = "Send message via WebSocket", description = "Send real-time chat message through WebSocket")
-    public void handleChatMessage(@DestinationVariable String roomCode,
-                                  SendMessageRequest request,
-                                  @Header("X-User-ID") UUID userId) {
-        long startTime = System.currentTimeMillis();
-        logger.debug("WebSocket CHAT_MESSAGE - roomCode: {}, userId: {}, contentLength: {}",
-                roomCode, userId, request.content().length());
+	@MessageMapping("/rooms/{roomCode}/sendMessage")
+	public void handleChatMessage(@DestinationVariable String roomCode,
+			SendMessageRequest request,
+			@Header("simpSessionAttributes") Map<String, Object> sessionAttributes) {
 
-        try {
-            MessageResponse savedMessage = messagingService.sendMessage(roomCode, userId, request.content());
+			String userIdStr = (String) sessionAttributes.get("userId");
+			if (userIdStr == null) {
+				logger.error("No userId in session attributes");
+				return;
+			}
+			UUID userId = UUID.fromString(userIdStr);
 
-            messagingTemplate.convertAndSend(
-                    "/topic/rooms/" + roomCode + "/chat",
-                    Map.of(
-                            "type", "CHAT_MESSAGE",
-                            "payload", savedMessage,
-                            "timestamp", System.currentTimeMillis()
-                    )
-            );
+			long startTime = System.currentTimeMillis();
+			logger.debug("WebSocket CHAT_MESSAGE - roomCode: {}, userId: {}, contentLength: {}",
+					roomCode, userId, request.content().length());
 
-            logger.debug("WebSocket CHAT_MESSAGE broadcast successful - roomCode: {}, messageId: {}",
-                    roomCode, savedMessage.id());
-        } catch (Exception e) {
-            logger.error("Failed to handle chat message for room {} from user {}: {}",
-                    roomCode, userId, e.getMessage(), e);
+			try {
+				MessageResponse savedMessage = messagingService.sendMessage(roomCode, userId, request.content());
 
-            messagingTemplate.convertAndSendToUser(
-                    userId.toString(),
-                    "/queue/errors",
-                    Map.of(
-                            "type", "MESSAGE_SEND_ERROR",
-                            "error", "Failed to send message",
-                            "timestamp", System.currentTimeMillis()
-                    )
-            );
-        } finally {
-            long duration = System.currentTimeMillis() - startTime;
-            logger.debug("WebSocket CHAT_MESSAGE processing completed in {}ms", duration);
-            if (duration > SLOW_OPERATION_THRESHOLD_MS) {
-                logger.warn("SLOW WEBSOCKET: CHAT_MESSAGE took {}ms", duration);
-            }
-        }
-    }
+				messagingTemplate.convertAndSend(
+						"/topic/rooms/" + roomCode + "/chat",
+						Map.of(
+							"type", "CHAT_MESSAGE",
+							"payload", savedMessage,
+							"timestamp", System.currentTimeMillis()
+							)
+						);
 
-    @MessageMapping("/rooms/{roomCode}/keyEvent")
-    @Operation(summary = "Send keyboard event", description = "Broadcast real-time keyboard events to room participants")
-    public void handleKeyEvent(@DestinationVariable String roomCode, Map<String, Object> keyEvent, @Header("X-User-ID") UUID userId) {
-        long startTime = System.currentTimeMillis();
-        logger.debug("WebSocket KEY_EVENT - roomCode: {}, userId: {}, eventType: {}", roomCode, userId, keyEvent.get("type"));
+				logger.debug("WebSocket CHAT_MESSAGE broadcast successful - roomCode: {}, messageId: {}",
+						roomCode, savedMessage.id());
+			} catch (Exception e) {
+				logger.error("Failed to handle chat message for room {} from user {}: {}",
+						roomCode, userId, e.getMessage(), e);
 
-        try {
-            messagingTemplate.convertAndSend(
-                    "/topic/rooms/" + roomCode + "/keyEvents",
-                    Map.of(
-                            "type", "KEY_EVENT",
-                            "userId", userId.toString(),
-                            "payload", keyEvent,
-                            "timestamp", System.currentTimeMillis()
-                    )
-            );
+				messagingTemplate.convertAndSendToUser(
+						userId.toString(),
+						"/queue/errors",
+						Map.of(
+							"type", "MESSAGE_SEND_ERROR",
+							"error", "Failed to send message",
+							"timestamp", System.currentTimeMillis()
+							)
+						);
+			} finally {
+				long duration = System.currentTimeMillis() - startTime;
+				logger.debug("WebSocket CHAT_MESSAGE processing completed in {}ms", duration);
+				if (duration > SLOW_OPERATION_THRESHOLD_MS) {
+					logger.warn("SLOW WEBSOCKET: CHAT_MESSAGE took {}ms", duration);
+				}
+			}
+	}
 
-            logger.debug("WebSocket KEY_EVENT broadcast successful - roomCode: {}, userId: {}", roomCode, userId);
-        } finally {
-            long duration = System.currentTimeMillis() - startTime;
-            logger.debug("WebSocket KEY_EVENT processing completed in {}ms", duration);
-            if (duration > SLOW_OPERATION_THRESHOLD_MS) logger.warn("SLOW WEBSOCKET: KEY_EVENT took {}ms", duration);
-        }
-    }
+	@MessageMapping("/rooms/{roomCode}/keyEvent")
+	@Operation(summary = "Send keyboard event", description = "Broadcast real-time keyboard events to room participants")
+	public void handleKeyEvent(@DestinationVariable String roomCode,
+                           Map<String, Object> keyEvent,
+                           @Header("simpSessionAttributes") Map<String, Object> sessionAttributes) {
 
-    @MessageMapping("/rooms/{roomCode}/join")
-    @Operation(summary = "Join room via WebSocket", description = "Notify room when user joins via WebSocket")
-    public void handleUserJoin(@DestinationVariable String roomCode,
-                               @Header("X-User-ID") UUID userId) {
-        long startTime = System.currentTimeMillis();
-        logger.info("WebSocket USER_JOIN - roomCode: {}, userId: {}", roomCode, userId);
+    String userIdStr = (String) sessionAttributes.get("userId");
+    UUID userId = userIdStr != null ? UUID.fromString(userIdStr) : null;
 
-        logger.debug("WebSocket USER_JOIN broadcast successful - roomCode: {}, userId: {}", roomCode, userId);
-        long duration = System.currentTimeMillis() - startTime;
-        logger.debug("WebSocket USER_JOIN processing completed in {}ms", duration);
-        if (duration > SLOW_OPERATION_THRESHOLD_MS) {
-            logger.warn("SLOW WEBSOCKET: USER_JOIN took {}ms", duration);
-        }
-    }
+		long startTime = System.currentTimeMillis();
+		logger.debug("WebSocket KEY_EVENT - roomCode: {}, userId: {}, eventType: {}", roomCode, userId, keyEvent.get("type"));
 
-    @MessageMapping("/rooms/{roomCode}/leave")
-    public void handleUserLeave(@DestinationVariable String roomCode, @Header("X-User-ID") UUID userId) {
-        logger.info("WebSocket USER_LEAVE – roomCode: {}, userId: {}", roomCode, userId);
+		try {
+			messagingTemplate.convertAndSend(
+					"/topic/rooms/" + roomCode + "/keyEvents",
+					Map.of(
+						"type", "KEY_EVENT",
+						"userId", userId.toString(),
+						"payload", keyEvent,
+						"timestamp", System.currentTimeMillis()
+						)
+					);
 
-        UUID roomId = localRoomRepository.findByCode(roomCode)
-                .map(r -> r.getId())
-                .orElseThrow(() -> new RuntimeException("Room not found"));
+			logger.debug("WebSocket KEY_EVENT broadcast successful - roomCode: {}, userId: {}", roomCode, userId);
+		} finally {
+			long duration = System.currentTimeMillis() - startTime;
+			logger.debug("WebSocket KEY_EVENT processing completed in {}ms", duration);
+			if (duration > SLOW_OPERATION_THRESHOLD_MS) logger.warn("SLOW WEBSOCKET: KEY_EVENT took {}ms", duration);
+		}
+	}
 
-        rabbitTemplate.convertAndSend(
-                roomsExchange,
-                userLeftRoutingKey,
-                Map.of("roomId", roomId.toString(), "userId", userId.toString()),
-                m -> {
-                    m.getMessageProperties().setHeader("X-Correlation-ID", CorrelationIdUtil.getCorrelationId());
-                    return m;
-                });
-    }
+	@MessageMapping("/rooms/{roomCode}/join")
+	@Operation(summary = "Join room via WebSocket", description = "Notify room when user joins via WebSocket")
+	public void handleUserJoin(@DestinationVariable String roomCode,
+                           @Header("simpSessionAttributes") Map<String, Object> sessionAttributes) {
+
+    String userIdStr = (String) sessionAttributes.get("userId");
+    UUID userId = userIdStr != null ? UUID.fromString(userIdStr) : null;
+
+			long startTime = System.currentTimeMillis();
+			logger.info("WebSocket USER_JOIN - roomCode: {}, userId: {}", roomCode, userId);
+
+			logger.debug("WebSocket USER_JOIN broadcast successful - roomCode: {}, userId: {}", roomCode, userId);
+			long duration = System.currentTimeMillis() - startTime;
+			logger.debug("WebSocket USER_JOIN processing completed in {}ms", duration);
+			if (duration > SLOW_OPERATION_THRESHOLD_MS) {
+				logger.warn("SLOW WEBSOCKET: USER_JOIN took {}ms", duration);
+			}
+	}
+
+	@MessageMapping("/rooms/{roomCode}/leave")
+	public void handleUserLeave(@DestinationVariable String roomCode,
+                            @Header("simpSessionAttributes") Map<String, Object> sessionAttributes) {
+
+    String userIdStr = (String) sessionAttributes.get("userId");
+
+		logger.info("WebSocket USER_LEAVE – roomCode: {}, userId: {}", roomCode, userIdStr);
+
+		UUID roomId = localRoomRepository.findByCode(roomCode)
+			.map(r -> r.getId())
+			.orElseThrow(() -> new RuntimeException("Room not found"));
+
+		rabbitTemplate.convertAndSend(
+				roomsExchange,
+				userLeftRoutingKey,
+				Map.of("roomId", roomId.toString(), "userId", userIdStr),
+				m -> {
+					m.getMessageProperties().setHeader("X-Correlation-ID", CorrelationIdUtil.getCorrelationId());
+					return m;
+				});
+	}
 
 }

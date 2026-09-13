@@ -17,57 +17,36 @@ import java.util.concurrent.ConcurrentMap;
 @RequiredArgsConstructor
 public class StompSubscribeListener {
 
-    private static final Logger logger = LoggerFactory.getLogger(StompSubscribeListener.class);
+	private static final Logger logger = LoggerFactory.getLogger(StompSubscribeListener.class);
 
-    private final LocalRoomRepository localRoomRepository;
+	private final LocalRoomRepository localRoomRepository;
 
-    // remembers which session already has room data stored
-    private final ConcurrentMap<String, Boolean> sessionInitialized = new ConcurrentHashMap<>();
+	@EventListener
+	public void onSubscribe(SessionSubscribeEvent event) {
+		StompHeaderAccessor headers = StompHeaderAccessor.wrap(event.getMessage());
+		String sessionId = headers.getSessionId();
+		String destination = headers.getDestination();
 
-    @EventListener
-    public void onSubscribe(SessionSubscribeEvent event) {
-        StompHeaderAccessor headers = StompHeaderAccessor.wrap(event.getMessage());
-        String sessionId = headers.getSessionId();
-        String destination = headers.getDestination();
+		logger.debug("SUBSCRIBE event – session:{}, dest:{}", sessionId, destination);
 
-		logger.debug("SUBSCRIBE event – session:{}, dest:{}, X-User-ID:{}", sessionId, destination, headers.getFirstNativeHeader("X-User-ID"));
+		if (destination == null || !destination.startsWith("/topic/rooms/")) {
+			return;
+		}
 
-        if (destination == null || !destination.startsWith("/topic/rooms/")) {
-            return;
-        }
+		String[] parts = destination.split("/");
+		if (parts.length < 4) return;
+		String roomCode = parts[3];
 
-        String[] parts = destination.split("/"); // /topic/rooms/{code}/whatever
-        if (parts.length < 4) return;
-        String roomCode = parts[3];
+		String userIdStr = (String) headers.getSessionAttributes().get("userId");
+		if (userIdStr == null) {
+			logger.warn("SUBSCRIBE without userId in session – session {}", sessionId);
+			return;
+		}
 
-        // store only once per physical session
-        if (sessionInitialized.putIfAbsent(sessionId, Boolean.TRUE) != null) {
-            return;
-        }
-
-        //String userIdStr = headers.getFirstNativeHeader("X-User-ID");
-        //if (userIdStr == null) {
-        //    logger.warn("SUBSCRIBE without X-User-ID – session {}", sessionId);
-        //    return;
-        //}
-        String userIdStr = (String) headers.getSessionAttributes().get("X-User-ID");
-        if (userIdStr == null) {
-            logger.warn("SUBSCRIBE – no X-User-ID in session attributes");
-            return;
-        }
-
-        UUID roomId = localRoomRepository.findByCode(roomCode)
-                .map(r -> r.getId())
-                .orElse(null);
-        if (roomId == null) {
-            logger.warn("Room {} not found locally – session {}", roomCode, sessionId);
-            return;
-        }
-
-        headers.getSessionAttributes().put("roomCode", roomCode);
-        headers.getSessionAttributes().put("userId",   userIdStr);
-        headers.getSessionAttributes().put("roomId",   roomId.toString());
-
-        logger.info("Stored session data – session:{}, room:{}, user:{}", sessionId, roomCode, userIdStr);
-    }
+		localRoomRepository.findByCode(roomCode).ifPresent(room -> {
+			headers.getSessionAttributes().put("roomCode", roomCode);
+			headers.getSessionAttributes().put("roomId", room.getId().toString());
+			logger.info("Stored session data – session:{}, room:{}, user:{}", sessionId, roomCode, userIdStr);
+		});
+	}
 }

@@ -17,7 +17,7 @@ import java.util.UUID;
 public class LocalUser {
 
     @Id
-    private UUID id; // Matches auth.users.id
+    private UUID id; 
 
     @Column(name = "username", nullable = false, length = 50)
     @NotBlank(message = "Username is required")

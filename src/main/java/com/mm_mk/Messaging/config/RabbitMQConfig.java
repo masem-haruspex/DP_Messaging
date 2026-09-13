@@ -10,13 +10,11 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    // --- Injected Exchange Names ---
     @Value("${rabbitmq.exchange.user}")
     private String userExchangeName;
     @Value("${rabbitmq.exchange.rooms}")
     private String roomsExchangeName;
 
-    // --- Injected Queue Names ---
     @Value("${rabbitmq.queue.user.created}")
     private String userCreatedQueueName;
     @Value("${rabbitmq.queue.user.updated}")
@@ -36,7 +34,6 @@ public class RabbitMQConfig {
     @Value("${rabbitmq.queue.message.sent}")
     private String messageSentQueueName;
 
-    // --- Injected Routing Keys ---
     @Value("${rabbitmq.routingkey.user.created}")
     private String userCreatedRoutingKey;
     @Value("${rabbitmq.routingkey.user.updated}")
@@ -56,18 +53,10 @@ public class RabbitMQConfig {
     @Value("${rabbitmq.routingkey.message.sent}")
     private String messageSentRoutingKey;
 
-    // =================================================================
-    // General Configuration
-    // =================================================================
-
     @Bean
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();
     }
-
-    // =================================================================
-    // Exchange Definitions
-    // =================================================================
 
     @Bean
     public TopicExchange userExchange() {
@@ -79,11 +68,6 @@ public class RabbitMQConfig {
         return ExchangeBuilder.topicExchange(roomsExchangeName).durable(true).build();
     }
 
-    // =================================================================
-    // Queue Definitions
-    // =================================================================
-
-    // --- Queues for User Service Events ---
     @Bean
     public Queue userCreatedQueue() {
         return QueueBuilder.durable(userCreatedQueueName).build();
@@ -94,7 +78,6 @@ public class RabbitMQConfig {
         return QueueBuilder.durable(userUpdatedQueueName).build();
     }
 
-    // --- Queues for Rooms Service Events ---
     @Bean
     public Queue roomCreatedQueue() {
         return QueueBuilder.durable(roomCreatedQueueName).build();
@@ -130,11 +113,6 @@ public class RabbitMQConfig {
         return QueueBuilder.durable(messageSentQueueName).build();
     }
 
-    // =================================================================
-    // Binding Definitions
-    // =================================================================
-
-    // --- Bindings to User Exchange ---
     @Bean
     public Binding bindingUserCreated(Queue userCreatedQueue, TopicExchange userExchange) {
         return BindingBuilder.bind(userCreatedQueue)
@@ -149,7 +127,6 @@ public class RabbitMQConfig {
                 .with(userUpdatedRoutingKey);
     }
 
-    // --- Bindings to Rooms Exchange ---
     @Bean
     public Binding bindRoomCreated(Queue roomCreatedQueue, TopicExchange roomsExchange) {
         return BindingBuilder.bind(roomCreatedQueue)

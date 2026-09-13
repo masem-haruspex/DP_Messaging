@@ -1,4 +1,3 @@
-// src/main/java/com/mm_mk/Messaging/MessagingApplication.java
 package com.mm_mk.Messaging;
 
 import org.springframework.boot.SpringApplication;

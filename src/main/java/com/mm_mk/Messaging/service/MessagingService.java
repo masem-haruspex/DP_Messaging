@@ -61,7 +61,6 @@ public class MessagingService {
                         return new RuntimeException("Room not found in local_rooms: " + roomCode);
                     });
 
-            // Check if user exists, if not create a guest user
             LocalUser user = localUserRepository.findById(userId).orElseGet(() -> {
                 logger.info("Creating guest user for messaging - userId: {}", userId);
                 LocalUser guestUser = LocalUser.builder()

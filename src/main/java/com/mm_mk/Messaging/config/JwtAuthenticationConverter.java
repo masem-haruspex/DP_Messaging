@@ -35,10 +35,8 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
         }
 
         try {
-            // Parse UUID from subject
             UUID userId = UUID.fromString(subject);
 
-            // Get username for logging (optional)
             String username = jwt.getClaimAsString("username");
             logger.debug("JWT conversion - userId: {}, username: {}", userId, username);
 
@@ -58,10 +56,8 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
     private Collection<GrantedAuthority> extractAuthorities(UUID userId) {
         List<GrantedAuthority> authorities = new ArrayList<>();
 
-        // All authenticated users get ROLE_USER
         authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
 
-        // Check if user is admin
         boolean isAdmin = adminUserRepository.isUserAdmin(userId);
         if (isAdmin) {
             authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));

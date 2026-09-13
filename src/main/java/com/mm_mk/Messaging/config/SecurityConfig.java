@@ -23,137 +23,155 @@ import com.mm_mk.Messaging.service.JpaUserDetailsService;
 import java.io.InputStream;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPublicKey;
+import java.util.stream.Collectors;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.List;
+import java.util.Arrays;
+import java.util.ArrayList;
 
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
-    private final ActuatorUserAgentFilter actuatorUserAgentFilter;
-    private final FrontendProperties frontendProperties;
-    private final CorrelationFilter correlationFilter;
-    private final JwtAuthenticationConverter jwtAuthenticationConverter;
-    private final JpaUserDetailsService jpaUserDetailsService;
+	private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
+	private final FrontendProperties frontendProperties;
+	private final CorrelationFilter correlationFilter;
+	private final JwtAuthenticationConverter jwtAuthenticationConverter;
+	private final JpaUserDetailsService jpaUserDetailsService;
 
-    @Bean
-    @Order(1)
-    public SecurityFilterChain actuatorSecurity(HttpSecurity http) throws Exception {
-        logger.info("Configuring actuator security");
+	@Bean
+	@Order(1)
+	public SecurityFilterChain actuatorSecurity(HttpSecurity http) throws Exception {
+		logger.info("Configuring actuator security");
 
-        http
-                .securityMatcher("/actuator/**", "/swagger-ui/**", "/v3/api-docs/**", "/api-docs/**")
-                .csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/api-docs/**").permitAll()
-                        .anyRequest().hasRole("ADMIN")
-                )
-                .httpBasic(Customizer.withDefaults())
-                .userDetailsService(jpaUserDetailsService)
-                .addFilterBefore(correlationFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(actuatorUserAgentFilter, UsernamePasswordAuthenticationFilter.class);
+		http
+			.securityMatcher("/actuator/**", "/swagger-ui/**", "/v3/api-docs/**", "/api-docs/**")
+			.csrf(csrf -> csrf.disable())
+			.authorizeHttpRequests(auth -> auth
+					.requestMatchers("/actuator/health", "/actuator/info").permitAll()
+					.requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/api-docs/**").permitAll()
+					.anyRequest().hasRole("ADMIN")
+					)
+			.httpBasic(Customizer.withDefaults())
+			.userDetailsService(jpaUserDetailsService)
+			.addFilterBefore(correlationFilter, UsernamePasswordAuthenticationFilter.class);
 
-        logger.info("Actuator security configured");
-        return http.build();
-    }
+		logger.info("Actuator security configured");
+		return http.build();
+	}
 
-    @Bean
-    @Order(2)
-    public SecurityFilterChain guestEndpointsSecurity(HttpSecurity http) throws Exception {
-        logger.info("Configuring guest endpoints security");
+	@Bean
+	@Order(2)
+	public SecurityFilterChain guestEndpointsSecurity(HttpSecurity http) throws Exception {
+		logger.info("Configuring guest endpoints security");
+		http
+			.securityMatcher(
+					"/api/messages/**",
+					"/ws/**"
+					)
+			.csrf(csrf -> csrf
+					.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+					.ignoringRequestMatchers(
+						"/api/messages/**",
+						"/ws/**"
+						)
+				 )
+			.cors(cors -> cors.configurationSource(corsConfigurationSource(frontendProperties)))
+			.authorizeHttpRequests(auth -> auth
+					.requestMatchers(
+						"/api/messages/**",
+						"/ws/**"
+						).permitAll()
+					)
+			.addFilterBefore(correlationFilter, UsernamePasswordAuthenticationFilter.class);
+		logger.info("Guest endpoints security configured - all messaging and WebSocket endpoints are public");
+		return http.build();
+	}
 
-        http
-                .securityMatcher(
-                        "/api/messages/**",
-                        "/ws/**"
-                )
-                .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .ignoringRequestMatchers(
-                                "/api/messages/**",
-                                "/ws/**"
-                        )
-                )
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                "/api/messages/**",
-                                "/ws/**"
-                        ).permitAll()
-                )
-                .addFilterBefore(correlationFilter, UsernamePasswordAuthenticationFilter.class);
+	@Bean
+	@Order(3)
+	public SecurityFilterChain fallbackSecurity(HttpSecurity http) throws Exception {
+		logger.info("Configuring fallback security");
 
-        logger.info("Guest endpoints security configured - all messaging and WebSocket endpoints are public");
-        return http.build();
-    }
+		http
+			.securityMatcher("/**")
+			.csrf(csrf -> csrf
+					.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+				 )
+			.cors(cors -> cors.configurationSource(corsConfigurationSource(frontendProperties)))
+			.authorizeHttpRequests(auth -> auth
+					.anyRequest().authenticated()
+					)
+			.addFilterBefore(correlationFilter, UsernamePasswordAuthenticationFilter.class)
+			.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
 
-    @Bean
-    @Order(3)
-    public SecurityFilterChain fallbackSecurity(HttpSecurity http) throws Exception {
-        logger.info("Configuring fallback security");
+		logger.info("Fallback security configured - all other endpoints require authentication");
+		return http.build();
+	}
 
-        http
-                .securityMatcher("/**")
-                .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                )
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .authorizeHttpRequests(auth -> auth
-                        .anyRequest().authenticated()
-                )
-                .addFilterBefore(correlationFilter, UsernamePasswordAuthenticationFilter.class)
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
+	@Bean
+	public JwtDecoder jwtDecoder() {
+		try {
+			logger.info("Configuring JWT decoder with shared public key");
+			RSAPublicKey publicKey = loadPublicKey();
+			return NimbusJwtDecoder.withPublicKey(publicKey).build();
+		} catch (Exception e) {
+			logger.error("Failed to configure JWT decoder", e);
+			throw new RuntimeException("JWT decoder configuration failed", e);
+		}
+	}
 
-        logger.info("Fallback security configured - all other endpoints require authentication");
-        return http.build();
-    }
+	private RSAPublicKey loadPublicKey() throws Exception {
+		logger.debug("Loading public key from certifications/public.pem");
+		var resource = new ClassPathResource("certifications/public.pem");
+		try (InputStream is = resource.getInputStream()) {
+			String key = new String(is.readAllBytes())
+				.replace("-----BEGIN PUBLIC KEY-----", "")
+				.replace("-----END PUBLIC KEY-----", "")
+				.replaceAll("\\s", "");
+			byte[] decoded = Base64.getDecoder().decode(key);
+			X509EncodedKeySpec keySpec = new X509EncodedKeySpec(decoded);
+			KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+			return (RSAPublicKey) keyFactory.generatePublic(keySpec);
+		}
+	}
 
-    @Bean
-    public JwtDecoder jwtDecoder() {
-        try {
-            logger.info("Configuring JWT decoder with shared public key");
-            RSAPublicKey publicKey = loadPublicKey();
-            return NimbusJwtDecoder.withPublicKey(publicKey).build();
-        } catch (Exception e) {
-            logger.error("Failed to configure JWT decoder", e);
-            throw new RuntimeException("JWT decoder configuration failed", e);
-        }
-    }
+	@Bean
+	public CorsConfigurationSource corsConfigurationSource(FrontendProperties frontendProperties) {
+		CorsConfiguration cfg = new CorsConfiguration();
 
-    private RSAPublicKey loadPublicKey() throws Exception {
-        logger.debug("Loading public key from certifications/public.pem");
-        var resource = new ClassPathResource("certifications/public.pem");
-        try (InputStream is = resource.getInputStream()) {
-            String key = new String(is.readAllBytes())
-                    .replace("-----BEGIN PUBLIC KEY-----", "")
-                    .replace("-----END PUBLIC KEY-----", "")
-                    .replaceAll("\\s", "");
-            byte[] decoded = Base64.getDecoder().decode(key);
-            X509EncodedKeySpec keySpec = new X509EncodedKeySpec(decoded);
-            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-            return (RSAPublicKey) keyFactory.generatePublic(keySpec);
-        }
-    }
+		List<String> allowedOrigins = frontendProperties.getUrls().stream()
+			.filter(url -> url != null && !url.isBlank())
+			.collect(Collectors.toList());
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        logger.info("Configuring CORS with allowed origins: {}", frontendProperties.getUrls());
+		List<String> allOrigins = new ArrayList<>(allowedOrigins);
+		allowedOrigins.forEach(url -> {
+			allOrigins.add(url + "/oauth-popup.html");
+		});
 
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(frontendProperties.getUrls());
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("X-XSRF-TOKEN", "X-Correlation-ID"));
-        config.setAllowCredentials(true);
-        config.setMaxAge(3600L);
+		cfg.setAllowedOrigins(allOrigins);
+		cfg.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","OPTIONS","PATCH"));
+				cfg.setAllowedHeaders(Arrays.asList(
+					"Authorization",
+					"Content-Type",
+					"X-Requested-With",
+					"X-XSRF-TOKEN",
+					"X-Correlation-ID",
+					"x-user-id"
+					));
+		cfg.setExposedHeaders(Arrays.asList(
+					"Authorization",
+					"X-XSRF-TOKEN",
+					"X-Correlation-ID",
+					"x-user-id"
+					));
+		cfg.setAllowCredentials(true);
+		cfg.setMaxAge(3600L);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-
-        return source;
-    }
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		source.registerCorsConfiguration("/**", cfg);
+		return source;
+	}
 }
