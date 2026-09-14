@@ -1,0 +1,109 @@
+# ---------------------------------------------------------------------------
+# Template configuration. Copy to 'application.properties' and fill in values.
+#   cp src/main/resources/application.properties.example \
+#      src/main/resources/application.properties
+# The real application.properties is gitignored and must never be committed.
+# Secrets are supplied via environment variables - see ${...} placeholders.
+# ---------------------------------------------------------------------------
+
+spring.application.name=Messaging
+server.port=8083
+server.shutdown=graceful
+spring.lifecycle.timeout-per-shutdown-phase=30s
+rooms.service.url=http://localhost:8082
+frontend.urls[0]=http://localhost:5173
+frontend.urls[1]=http://localhost:5174
+spring.profiles.active=local
+
+# PostgreSQL
+spring.datasource.url=jdbc:postgresql://localhost:5432/dp_messaging
+spring.datasource.driver-class-name=org.postgresql.Driver
+spring.datasource.hikari.minimum-idle=2
+spring.datasource.hikari.maximum-pool-size=10
+spring.datasource.hikari.idle-timeout=300000
+spring.datasource.hikari.pool-name=HikariPool-Rooms
+
+# JPA / Hibernate
+spring.jpa.hibernate.ddl-auto=validate
+spring.jpa.properties.hibernate.jdbc.lob.non_contextual_creation=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+# JDBC
+spring.data.jdbc.repositories.enabled=false
+
+# Security
+spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:8080
+spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:8080/oauth2/jwks
+
+# Logging
+logging.file.name=logs/messaging.log
+logging.logback.rollingpolicy.max-file-size=10MB
+logging.logback.rollingpolicy.max-history=10
+logging.logback.rollingpolicy.clean-history-on-start=false
+logging.pattern.console=%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr([%X{correlationId}]){magenta} %clr(${LOG_LEVEL_PATTERN:%5p}) %clr(${PID:- }){cyan} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:%wEx}
+logging.pattern.file=%d{yyyy-MM-dd HH:mm:ss.SSS} [%X{correlationId}] %-5level ${PID:- } --- [%15.15t] %-40.40logger{39} : %msg%n
+
+#logging.level.com.mm_mk.Messaging=DEBUG
+#logging.level.org.springframework=ERROR
+#logging.level.org.springframework.security=ERROR
+#logging.level.org.hibernate=ERROR
+#logging.level.org.apache.tomcat=ERROR
+#logging.level.org.apache.catalina=ERROR
+
+# logging.level.org.springframework.security=TRACE
+# logging.level.org.springframework=DEBUG
+# logging.level.org.apache.tomcat=DEBUG
+# logging.level.org.apache.catalina=DEBUG
+# logging.level.org.hibernate=INFO
+# logging.level.org.hibernate.SQL=DEBUG
+# logging.level.org.hibernate.orm.jdbc.bind=TRACE
+# logging.level.org.hibernate.stat=DEBUG
+# logging.level.org.hibernate.SQL_SLOW=INFO
+# logging.level.org.hibernate.pretty=INFO
+# logging.level.org.hibernate.cache=DEBUG
+# logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+# logging.level.org.springframework.jdbc.core=TRACE
+# spring.jpa.show-sql=true
+# spring.jpa.properties.hibernate.format_sql=true
+
+# RabbitMQ
+spring.rabbitmq.host=localhost
+spring.rabbitmq.port=5672
+spring.rabbitmq.username=${RABBITMQ_USERNAME}
+spring.rabbitmq.password=${RABBITMQ_PASSWORD}
+
+rabbitmq.exchange.user=user.exchange
+rabbitmq.exchange.rooms=rooms.exchange
+
+rabbitmq.routingkey.user.created=user.created
+rabbitmq.routingkey.user.updated=user.updated
+
+rabbitmq.routingkey.room.created=room.created
+rabbitmq.routingkey.room.deleted=room.deleted
+rabbitmq.routingkey.user.joined=user.joined
+rabbitmq.routingkey.user.left=user.left
+rabbitmq.routingkey.user.kicked=user.kicked
+rabbitmq.routingkey.user.muted=user.muted
+rabbitmq.routingkey.message.sent=message.sent
+
+rabbitmq.queue.user.created=messaging.user.created.queue
+rabbitmq.queue.user.updated=messaging.user.updated.queue
+rabbitmq.queue.room.created=messaging.room.created.queue
+rabbitmq.queue.room.deleted=messaging.room.deleted.queue
+rabbitmq.queue.user.joined=messaging.user.joined.queue
+rabbitmq.queue.user.left=messaging.user.left.queue
+rabbitmq.queue.user.kicked=messaging.user.kicked.queue
+rabbitmq.queue.user.muted=messaging.user.muted.queue
+rabbitmq.queue.message.sent=messaging.message.sent.queue
+
+# Actuator
+management.server.port=9003
+management.server.address=127.0.0.1
+management.endpoints.web.exposure.include=health,info,metrics,loggers
+management.endpoint.health.show-details=always
+management.endpoint.loggers.enabled=true
+
+# OpenAPI
+springdoc.api-docs.enabled=true
+springdoc.swagger-ui.enabled=true
+springdoc.swagger-ui.path=/swagger-ui.html
